@@ -290,6 +290,3 @@ if __name__ == "__main__":
             print(f"{job['id']:<4} {job['state']:<12} {job['attempts']:<9} {job['command']}")
         print("-" * 60)
         print(f"Total {state} jobs: {len(filtered)}")
-
-    
-        
