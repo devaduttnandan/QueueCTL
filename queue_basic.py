@@ -6,10 +6,13 @@ from datetime import datetime
 import threading
 import sys
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_FILE = os.path.join(BASE_DIR,"jobs.json")
+CONFIG_FILE = os.path.join(BASE_DIR,"config.json")
+STOP_FILE = os.path.join(BASE_DIR,"worker.stop")
 
-DB_FILE = "jobs.json"
-CONFIG_FILE = "config.json"
-
+stop_event = threading.Event()
+lock = threading.Lock()
 def load_config():
     if not os.path.exists(CONFIG_FILE):
         config = {"max_retries":3,"backoff_base":2}
@@ -23,14 +26,21 @@ def save_config(config):
         json.dump(config, f, indent=3)
 
 def load_jobs():
-    if not os.path.exists(DB_FILE):
-        return []
-    with open(DB_FILE,"r") as f:
-        return json.load(f)
+    with lock:
+        if not os.path.exists(DB_FILE):
+            return []
+        with open(DB_FILE,"r") as f:
+            content = f.read().strip()
+            if not content:
+                return []
+            return json.loads(content)
     
 def save_jobs(jobs):
-    with open(DB_FILE,"w") as f:
-        json.dump(jobs,f, indent=3)
+    with lock:
+        tmp_file = DB_FILE + ".tmp"
+        with open(tmp_file, "w") as f:
+            json.dump(jobs, f, indent=3)
+        os.replace(tmp_file, DB_FILE)
 
 
 def enqueue_jobs(command, max_retries = 3):
@@ -68,38 +78,62 @@ def acquire_lock():
 def release_lock():
     lock.release()
 
-def run_worker():
-    while True:
-        jobs = load_jobs()
-        for job in jobs:
-            if job["state"] == "pending":
-                print(f"Processing job {job['id']}: {job['command']}")
-                job['state'] = "processing"
-                job["updated_at"] = datetime.now().isoformat()
-                save_jobs(jobs)
+def run_worker(name="worker"):
+    print(f"[{name}] Worker started (pid={os.getpid()}).")
+    
+    try:
+        while not stop_event.is_set() and not os.path.exists(STOP_FILE):
+            jobs = load_jobs()
+            target_job = None
+            for job in jobs:
+                if job.get("state") == "pending":
+                    job["state"] = "processing"
+                    job["updated_at"] = datetime.now().isoformat()
+                    target_job = job.copy()
+                    save_jobs(jobs)
+                    print(f"[{name}] Picked job {job['id']} -> {job['command']}")
+                    break
 
-                result = subprocess.run(job["command"], shell=True)
-                if result.returncode == 0:
-                    print(f"job {job['id']} completed successfully!")
-                    job["state"] = "completed"
-                else:
-                    print(f"job {job['id']} failed!!")
-                    job["attempts"] += 1
-                    if job["attempts"] >= job["max_retries"]:
-                        job["state"] = "dead"
-                        print(f"Job {job['id']} moved to DLQ!")
+            if not target_job:
+                time.sleep(1)
+                continue
+
+            print(f"[{name}] Executing job {target_job['id']}")
+            result = subprocess.run(target_job["command"], shell=True)
+            rc = result.returncode
+
+            jobs = load_jobs()
+            for j in jobs:
+                if j["id"] == target_job["id"]:
+                    if rc == 0:
+                        j["state"] = "completed"
+                        print(f"[{name}] Job {j['id']}:  completed ")
                     else:
-                        config = load_config()
-                        base = config.get("backoff_base",2)
-                        delay = base ** job["attempts"]
-                        print(f"Retrying job {job['id']} after {delay} seconds.")
-                        job["state"] = "Retrying"
-                        save_jobs(jobs)
-                        time.sleep(delay)
-                        job["state"] = "pending"
-                job["updated_at"] = datetime.now().isoformat()
-                save_jobs(jobs)
-        time.sleep(2)
+                        j["attempts"] = j.get("attempts", 0) + 1
+                        cfg = load_config()
+                        base = cfg.get("backoff_base", 2)
+                        max_retries = j.get("max_retries", cfg.get("max_retries", 3))
+
+                        if j["attempts"] >= max_retries:
+                            j["state"] = "dead"
+                            print(f"[{name}] Job {j['id']} moved to DLQ")
+                        else:
+                            delay = base ** j["attempts"]
+                            print(f"[{name}] Job {j['id']} failed, retrying in {delay}s...")
+                            j["state"] = "pending"
+                            time.sleep(delay)
+
+                    j["updated_at"] = datetime.now().isoformat()
+                    break
+
+            save_jobs(jobs)
+            time.sleep(0.5)
+
+    except Exception as e:
+        print(f"[{name}] ERROR: {e}")
+        time.sleep(1)
+    finally:
+        print(f"[{name}] shutting down cleanly.")
 
 def list_dlq():
     jobs = load_jobs()
@@ -142,7 +176,68 @@ if __name__ == "__main__":
     if cmd == "enqueue":
         enqueue_jobs(sys.argv[2])
     elif cmd == "worker":
-        run_worker()
+        if len(sys.argv) < 3:
+            print("Starting single worker...")
+            if os.path.exists(STOP_FILE):
+                os.remove(STOP_FILE)
+            t = threading.Thread(target=run_worker, args=("worker-1",), daemon=True)
+            t.start()
+            try:
+                while True:
+                    if os.path.exists(STOP_FILE):
+                        print("Stop file detected. Stopping worker gracefully...")
+                        stop_event.set()
+                        break
+                    time.sleep(0.5)
+            except KeyboardInterrupt:
+                print("Shutting down worker gracefully...")
+            finally:
+                stop_event.set()
+                t.join()
+                if os.path.exists(STOP_FILE):
+                    os.remove(STOP_FILE)
+                print("Worker stopped.")
+        else:
+            subcmd = sys.argv[2]
+            if subcmd == "start":
+                count = 1
+                if "--count" in sys.argv:
+                    idx = sys.argv.index("--count")
+                    if idx + 1 < len(sys.argv):
+                        count = int(sys.argv[idx+1])
+                print(f"starting {count} workers...")
+                if os.path.exists(STOP_FILE):
+                    os.remove(STOP_FILE)
+                threads = []
+                for i in range(count):
+                    t = threading.Thread(target=run_worker, args = (f"worker-{i+1}",),daemon=True)
+                    threads.append(t)
+                    t.start()
+                try:
+                    while True:
+                        if os.path.exists(STOP_FILE):
+                            print("stop file detected. Stopping workers gracefully")
+                            stop_event.set()
+                            break
+                        time.sleep(0.5)
+                except KeyboardInterrupt:
+                    print("Shutting down workers gracefully...")
+                finally:
+                    print("stopping workers gracefully...")
+                    stop_event.set()
+                    for t in threads:
+                        t.join()
+                    if os.path.exists(STOP_FILE):
+                        os.remove(STOP_FILE)
+                    print("All workers stopped.")
+            elif subcmd == "stop":
+                print("stopping all workers")
+                with open(STOP_FILE,"w") as f:
+                    f.write("stop")
+                print("Stop signal written. Workers will exit gracefully")
+            else:
+                print("Usage: queuectl worker start --count N")
+
     elif cmd == "status":
         show_status()
     elif cmd == "dlq":
@@ -176,6 +271,25 @@ if __name__ == "__main__":
             print(f"Configuration updated: {key} = {value}")
         else:
             print("invalid config command, use 'get' or 'set'")
+    elif cmd == "list":
+        if len(sys.argv) < 4 or sys.argv[2] != "--state":
+            print("Usage: queuectl list --state <pending|processing|completed|dead>")
+            sys.exit(0)
+
+        state = sys.argv[3].lower()
+        jobs = load_jobs()
+        filtered = [job for job in jobs if job.get("state") == state]
+
+        if not filtered:
+            print(f"No jobs found with state '{state}'.")
+            sys.exit(0)
+
+        print(f"{'id':<4} {'state':<12} {'attempts':<9} COMMAND")
+        print("-" * 60)
+        for job in filtered:
+            print(f"{job['id']:<4} {job['state']:<12} {job['attempts']:<9} {job['command']}")
+        print("-" * 60)
+        print(f"Total {state} jobs: {len(filtered)}")
 
     
         
