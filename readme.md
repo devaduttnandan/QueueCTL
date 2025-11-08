@@ -35,3 +35,5 @@ Commands
 -queuectl dlq
 -queuectl dlq retry <worker id>
 -queuectl list <status that you want to see eg pending>
+-queuectl congfig get
+-queuectl config set <key> <value>
