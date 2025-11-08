@@ -5,28 +5,19 @@ It allows you to enqueue shell commands as jobs and process them asynchronously 
 
 ---
 
-## Features
+## 1. ⚙️ Setup Instructions
 
-- Simple file-based queue using `jobs.json`
-- Worker management with graceful shutdown
-- Retry with exponential backoff
-- Dead-letter queue (DLQ) handling for failed jobs
-- Safe, atomic file writes
-- CLI commands for enqueueing, status checking, and managing workers
+### Clone the repository and install locally
 
----
-
-## Installation
-
-Clone the repository and install locally:
-
-```
+```bash
 git clone https://github.com/devaduttnandan/QueueCTL.git
 cd QueueCTL
 pip install .
+```
 
-Commands
+##Commands
 
+```bash
 -queuectl enqueue <command>
 -queuectl status
 -queuectl worker
@@ -37,3 +28,30 @@ Commands
 -queuectl list <status that you want to see eg pending>
 -queuectl congfig get
 -queuectl config set <key> <value>
+```
+
+##Usage examples
+#enqueue job
+```bash
+queuectl enqueue "echo hello world"
+```
+#Outptut
+```bash
+Job 1 enqueued!
+```
+
+#status
+```bash
+queuectl status
+```
+#output
+```bash
+id   state        attempts  COMMAND
+------------------------------------------------------------
+1    pending      0         echo hello world
+------------------------------------------------------------
+Total jobs: 1
+```
+
+
+
