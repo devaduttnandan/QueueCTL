@@ -22,7 +22,7 @@ pip install .
 -queuectl status
 -queuectl worker
 -queuectl worker start --<number of workers>
--queuectl stop
+-queuectl worker stop
 -queuectl dlq
 -queuectl dlq retry <worker id>
 -queuectl list <status that you want to see eg pending>
