@@ -175,7 +175,7 @@ def retry_dlq(job_id):
     print(f"Job {job_id} not found in DLQ.")
 
 #main function for handling the commands
-if __name__ == "__main__":
+def main():
 
     if len(sys.argv) < 2:
         print("Usage:")
@@ -316,5 +316,5 @@ if __name__ == "__main__":
         print("-" * 60)
         print(f"Total {state} jobs: {len(filtered)}")
 
-    
-        
+if  __name__ == "__main__":
+    main()
