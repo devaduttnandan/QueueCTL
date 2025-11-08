@@ -176,6 +176,7 @@ queuectl status
 verify the job appears as pending
 
 #Worker Execution
+---
 ```bash
 queuectl worker start
 ```
