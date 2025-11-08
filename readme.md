@@ -52,6 +52,42 @@ id   state        attempts  COMMAND
 ------------------------------------------------------------
 Total jobs: 1
 ```
+##Architecture Overview
 
+#Job Lifecycle
+
+Enqueue:
+A job (shell command) is added to jobs.json with state = "pending".
+
+Worker picks job:
+A worker thread locks and updates job state to "processing".
+
+Execution:
+The command runs in a subprocess.
+
+Completion or Retry:
+
+If successful → "completed"
+
+If failed → "pending" (after exponential backoff)
+
+If retries exhausted → "dead" (moved to DLQ)
+
+#Data Persistence
+
+jobs.json → Stores job queue state (pending, processing, completed, dead).
+
+config.json → Stores global configuration like max retries and backoff base.
+
+worker.stop → File-based signal used to stop workers gracefully.
+
+#Worker Logic
+
+Workers continuously poll for "pending" jobs.
+
+Lock-based file access prevents race conditions.
+
+Retry delays are exponential:
+Delay = backoff_base ** attempts.
 
 
