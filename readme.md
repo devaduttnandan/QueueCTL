@@ -53,8 +53,8 @@ id   state        attempts  COMMAND
 Total jobs: 1
 ```
 
----
-##Architecture Overview
+
+Architecture Overview
 ---
 
 #Job Lifecycle
