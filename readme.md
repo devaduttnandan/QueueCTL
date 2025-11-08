@@ -158,4 +158,66 @@ Jobs are picked in the order they are listed in the JSON file.
 
 Trade-off: No priority queue implemented (bonus feature in assignment)
 
+5.Testing Instructions
+---
+
+#Setup
+---
+Ensure that you have installed the setup correctly
+
+#Basic Enqueue & Status
+---
+
+```bash
+queuectl enqueue "echo 'Hello World'"
+queuectl status
+```
+
+verify the job appears as pending
+
+#Worker Execution
+```bash
+queuectl worker start
+```
+
+worker should pick up the job and complete it
+check status again; job should be completed
+
+#Failed job & retry
+---
+```bash
+queuectl enqueue "exit 1"
+queuectl worker start
+```
+
+verify job retries according to max_retries
+check that it moves to dead after exhausting tries
+
+#DLQ operations
+---
+```bash
+queuectl dlq
+queuectl dlq retry <job_id>
+```
+
+verify dead jobs can be listed and retried
+
+#Multiple workers
+---
+```bash
+queuectl worker start --3
+```
+enqueue multiple jobs and confirm that no job is processed twice
+
+#configuration
+---
+```bash
+queuectl config get
+queuectl config set max_retries 5
+```
+verify configuration persists in config.json
+
+
+
+
 
