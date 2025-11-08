@@ -58,6 +58,7 @@ Architecture Overview
 ---
 
 #Job Lifecycle
+---
 
 Enqueue:
 A job (shell command) is added to jobs.json with state = "pending".
@@ -77,6 +78,7 @@ If failed → "pending" (after exponential backoff)
 If retries exhausted → "dead" (moved to DLQ)
 
 #Data Persistence
+---
 
 jobs.json → Stores job queue state (pending, processing, completed, dead).
 
@@ -85,6 +87,7 @@ config.json → Stores global configuration like max retries and backoff base.
 worker.stop → File-based signal used to stop workers gracefully.
 
 #Worker Logic
+---
 
 Workers continuously poll for "pending" jobs.
 
