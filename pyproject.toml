@@ -1,0 +1,8 @@
+[project]
+name = "queuectl"
+version = "0.1.0"
+description = "A lightweight local job queue system with exponential retry and DLQ"
+requires-python = ">=3.8"
+
+[project.scripts]
+queuectl = "queuectl.main:main"
