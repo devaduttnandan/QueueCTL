@@ -1,3 +1,3 @@
-git clone https://github.com/devaduttnandan/
-cd queuectl
+git clone https://github.com/devaduttnandan/QueueCTL.git
+cd QueueCTL
 pip install -e .
