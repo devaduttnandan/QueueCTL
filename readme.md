@@ -5,7 +5,7 @@ It allows you to enqueue shell commands as jobs and process them asynchronously 
 
 ---
 
-## 1. ⚙️ Setup Instructions
+## 1. Setup Instructions
 
 ### Clone the repository and install locally
 
