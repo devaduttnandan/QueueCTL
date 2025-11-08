@@ -218,6 +218,11 @@ queuectl config set max_retries 5
 ```
 verify configuration persists in config.json
 
+Architecture Design
+----
+<img width="1115" height="459" alt="image" src="https://github.com/user-attachments/assets/629eea4f-a3cf-431d-ace5-fae39f08cc1d" />
+
+
 
 
 
