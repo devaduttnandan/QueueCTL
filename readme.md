@@ -25,7 +25,7 @@ git clone https://github.com/devaduttnandan/QueueCTL.git
 cd QueueCTL
 pip install .
 
-##Usage
+Commands
 
 -queuectl enqueue <command>
 -queuectl status
