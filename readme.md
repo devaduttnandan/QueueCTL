@@ -96,4 +96,65 @@ Lock-based file access prevents race conditions.
 Retry delays are exponential:
 Delay = backoff_base ** attempts.
 
+Assumtions and trade offs
+---
+
+Persistence
+---
+
+Jobs are stored in a local JSON file (jobs.json) for simplicity.
+
+Trade-off: JSON file is sufficient for small workloads but may not scale well for thousands of concurrent jobs. No database locking mechanism beyond threading lock is used.
+
+Worker Concurrency
+---
+
+Multiple workers can run in parallel threads, picking one job at a time.
+
+Trade-off: Uses Python threading rather than multiprocessing for simplicity. Threads share memory, so CPU-bound tasks may not fully utilize multiple cores.
+
+Retry & Backoff
+---
+
+Exponential backoff is applied: delay = base ^ attempts seconds.
+
+Assumption: All jobs are retryable unless explicitly moved to DLQ.
+
+Trade-off: No maximum delay cap; very high attempts could result in long delays.
+
+Command Execution
+---
+
+Jobs execute arbitrary shell commands using subprocess.run.
+
+Trade-off: Security risk if commands come from untrusted sources (not sanitized).
+
+DLQ (Dead Letter Queue)
+---
+
+Jobs that exceed max_retries are marked as dead and can be manually retried.
+
+Assumption: Users will manually monitor and retry DLQ jobs if needed.
+
+Configuration
+---
+
+Configurable values are stored in config.json.
+
+Trade-off: No live config reload during runtime; changes affect only future jobs.
+
+Graceful Shutdown
+---
+
+Workers check for a stop signal and finish the current job before stopping.
+
+Trade-off: No interruptible jobs; long-running jobs will block shutdown until complete.
+
+Job Ordering
+---
+
+Jobs are picked in the order they are listed in the JSON file.
+
+Trade-off: No priority queue implemented (bonus feature in assignment)
+
 
