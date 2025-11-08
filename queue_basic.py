@@ -6,13 +6,16 @@ from datetime import datetime
 import threading
 import sys
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_FILE = os.path.join(BASE_DIR,"jobs.json")
+#required global files
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))#absolute directory path of the current Python file
+DB_FILE = os.path.join(BASE_DIR,"jobs.json")#logs file
 CONFIG_FILE = os.path.join(BASE_DIR,"config.json")
 STOP_FILE = os.path.join(BASE_DIR,"worker.stop")
 
 stop_event = threading.Event()
 lock = threading.Lock()
+
+#loading and saving config funcs
 def load_config():
     if not os.path.exists(CONFIG_FILE):
         config = {"max_retries":3,"backoff_base":2}
@@ -25,7 +28,9 @@ def save_config(config):
     with open(CONFIG_FILE,"w") as f:
         json.dump(config, f, indent=3)
 
+#loading and saving jobs func
 def load_jobs():
+    #safe access of the file using lock
     with lock:
         if not os.path.exists(DB_FILE):
             return []
@@ -36,13 +41,14 @@ def load_jobs():
             return json.loads(content)
     
 def save_jobs(jobs):
+    #safe access of the file using lock
     with lock:
         tmp_file = DB_FILE + ".tmp"
         with open(tmp_file, "w") as f:
             json.dump(jobs, f, indent=3)
         os.replace(tmp_file, DB_FILE)
 
-
+#adding jobs to queue function
 def enqueue_jobs(command, max_retries = 3):
     jobs = load_jobs()
     config = load_config()
@@ -60,6 +66,7 @@ def enqueue_jobs(command, max_retries = 3):
     save_jobs(jobs)
     print(f"Job {job['id']} enqueued!")
 
+#listing of the jobs and their status
 def show_status():
     jobs = load_jobs()
     if not jobs:
@@ -72,19 +79,23 @@ def show_status():
     print("-"*60)
     print(f"Total jobs: {len(jobs)}")
 
+#required locking and release function
 lock = threading.Lock()
 def acquire_lock():
     lock.acquire()
 def release_lock():
     lock.release()
 
+#worker function for processing the commands
 def run_worker(name="worker"):
     print(f"[{name}] Worker started (pid={os.getpid()}).")
     
     try:
+        #looping till a global stop signal is set or the stop file exists on disk
         while not stop_event.is_set() and not os.path.exists(STOP_FILE):
             jobs = load_jobs()
             target_job = None
+            #picking the jobs
             for job in jobs:
                 if job.get("state") == "pending":
                     job["state"] = "processing"
@@ -97,7 +108,7 @@ def run_worker(name="worker"):
             if not target_job:
                 time.sleep(1)
                 continue
-
+            #one worker to handle one job at a time
             print(f"[{name}] Executing job {target_job['id']}")
             result = subprocess.run(target_job["command"], shell=True)
             rc = result.returncode
@@ -109,6 +120,7 @@ def run_worker(name="worker"):
                         j["state"] = "completed"
                         print(f"[{name}] Job {j['id']}:  completed ")
                     else:
+                        #on failure(retry or DLQ)
                         j["attempts"] = j.get("attempts", 0) + 1
                         cfg = load_config()
                         base = cfg.get("backoff_base", 2)
@@ -135,6 +147,7 @@ def run_worker(name="worker"):
     finally:
         print(f"[{name}] shutting down cleanly.")
 
+#listing of all the dead jobs
 def list_dlq():
     jobs = load_jobs()
     dead_jobs = [job for job in jobs if job["state"] == "dead"]
@@ -148,6 +161,7 @@ def list_dlq():
     print('-'*60)
     print(f"Total DLQ jobs: {len(dead_jobs)}")
 
+#add dead jobs back to the pending queue
 def retry_dlq(job_id):
     jobs = load_jobs()
     for job in jobs:
@@ -160,6 +174,7 @@ def retry_dlq(job_id):
             return
     print(f"Job {job_id} not found in DLQ.")
 
+#main function for handling the commands
 if __name__ == "__main__":
 
     if len(sys.argv) < 2:
@@ -173,15 +188,19 @@ if __name__ == "__main__":
         sys.exit(0)
 
     cmd = sys.argv[1].lower()
+    #enqueueing of jobs
     if cmd == "enqueue":
         enqueue_jobs(sys.argv[2])
+    #worker function command
     elif cmd == "worker":
-        if len(sys.argv) < 3:
+        if len(sys.argv) < 3:# condition to start a single worker
             print("Starting single worker...")
+            #if alr a stop file exists remove it
             if os.path.exists(STOP_FILE):
                 os.remove(STOP_FILE)
             t = threading.Thread(target=run_worker, args=("worker-1",), daemon=True)
             t.start()
+            #kept in try to keep checking for the stop
             try:
                 while True:
                     if os.path.exists(STOP_FILE):
@@ -191,6 +210,7 @@ if __name__ == "__main__":
                     time.sleep(0.5)
             except KeyboardInterrupt:
                 print("Shutting down worker gracefully...")
+            #to stop graceefully
             finally:
                 stop_event.set()
                 t.join()
@@ -199,6 +219,7 @@ if __name__ == "__main__":
                 print("Worker stopped.")
         else:
             subcmd = sys.argv[2]
+            #to start multiple workers
             if subcmd == "start":
                 count = 1
                 if "--count" in sys.argv:
@@ -237,7 +258,7 @@ if __name__ == "__main__":
                 print("Stop signal written. Workers will exit gracefully")
             else:
                 print("Usage: queuectl worker start --count N")
-
+    #command to show status
     elif cmd == "status":
         show_status()
     elif cmd == "dlq":
@@ -245,14 +266,17 @@ if __name__ == "__main__":
             list_dlq()
         elif len(sys.argv) == 4 and sys.argv[2] == "retry":
             retry_dlq(sys.argv[3])
+    #to set the global config variables
     elif cmd == "config":
         if len(sys.argv)<3:
             print(" queuectl config [get|set <key> <value>]")
             sys.exit(0)
         action = sys.argv[2].lower()
         config = load_config()
+        #to show the current global values
         if action == "get":
             print(json.dumps(config,indent=3))
+        #to set the global values
         elif action == "set":
             if len(sys.argv) < 5:
                 print("usage: queuectl config set <key> <value>")
@@ -271,6 +295,7 @@ if __name__ == "__main__":
             print(f"Configuration updated: {key} = {value}")
         else:
             print("invalid config command, use 'get' or 'set'")
+    #to list jobs on the basis of their status that we want to see
     elif cmd == "list":
         if len(sys.argv) < 4 or sys.argv[2] != "--state":
             print("Usage: queuectl list --state <pending|processing|completed|dead>")
@@ -290,3 +315,6 @@ if __name__ == "__main__":
             print(f"{job['id']:<4} {job['state']:<12} {job['attempts']:<9} {job['command']}")
         print("-" * 60)
         print(f"Total {state} jobs: {len(filtered)}")
+
+    
+        
