@@ -55,6 +55,7 @@ Total jobs: 1
 
 ---
 ##Architecture Overview
+---
 
 #Job Lifecycle
 
@@ -91,6 +92,5 @@ Lock-based file access prevents race conditions.
 
 Retry delays are exponential:
 Delay = backoff_base ** attempts.
----
 
 
